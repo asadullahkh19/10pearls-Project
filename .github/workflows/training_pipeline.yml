@@ -1,0 +1,90 @@
+name: Training Pipeline (Daily)
+
+on:
+  schedule:
+    - cron: "30 2 * * *"   # 02:30 UTC every day (after feature pipeline has run)
+  workflow_dispatch:
+    inputs:
+      city:
+        description: "City to train models for"
+        required: false
+        default: "london"
+      days:
+        description: "Days of history to use"
+        required: false
+        default: "90"
+      no_lstm:
+        description: "Skip LSTM training (faster)"
+        required: false
+        default: "false"
+
+jobs:
+  run-training-pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Restore feature store cache
+        uses: actions/cache@v4
+        with:
+          path: data/processed
+          key: feature-store-${{ runner.os }}-
+          restore-keys: |
+            feature-store-${{ runner.os }}-
+
+      - name: Restore model registry cache
+        uses: actions/cache@v4
+        with:
+          path: models/registry
+          key: model-registry-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: |
+            model-registry-${{ runner.os }}-
+
+      - name: Run training pipeline
+        env:
+          AQICN_API_TOKEN:    ${{ secrets.AQICN_API_TOKEN }}
+          OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
+          HOPSWORKS_API_KEY:  ${{ secrets.HOPSWORKS_API_KEY }}
+          HOPSWORKS_PROJECT:  ${{ secrets.HOPSWORKS_PROJECT }}
+        run: |
+          CITY="${{ github.event.inputs.city || 'london' }}"
+          DAYS="${{ github.event.inputs.days || '90' }}"
+          NO_LSTM="${{ github.event.inputs.no_lstm || 'false' }}"
+          LSTM_FLAG=""
+          if [ "$NO_LSTM" = "true" ]; then LSTM_FLAG="--no-lstm"; fi
+          python scripts/run_training_pipeline.py \
+            --city "$CITY" \
+            --days "$DAYS" \
+            $LSTM_FLAG
+
+      - name: Save model registry cache
+        uses: actions/cache@v4
+        with:
+          path: models/registry
+          key: model-registry-${{ runner.os }}-${{ github.run_id }}
+
+      - name: Upload trained models
+        uses: actions/upload-artifact@v4
+        with:
+          name: trained-models-${{ github.run_number }}
+          path: models/registry/
+          retention-days: 30
+
+      - name: Post training summary
+        run: |
+          echo "Training complete for city: ${{ github.event.inputs.city || 'london' }}"
+          find models/registry -name "*_meta.json" | head -5 | xargs -I{} cat {}
