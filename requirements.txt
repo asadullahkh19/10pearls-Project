@@ -32,7 +32,7 @@ pytest>=8.0.0
 pytest-cov>=4.1.0
 
 # Optional: Hopsworks cloud feature store
-# hopsworks>=3.7.0
+ hopsworks>=3.7.0
 
 # Optional: Apache Airflow (heavy — install separately)
 # apache-airflow>=2.8.0

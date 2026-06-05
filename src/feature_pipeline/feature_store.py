@@ -90,7 +90,7 @@ def load_features(
     import json
     records = [pd.Series(json.loads(r[0])) for r in rows]
     df = pd.DataFrame(records)
-    df["timestamp"] = pd.to_datetime(df["timestamp"])
+    df["timestamp"] = pd.to_datetime(df["timestamp"], format='mixed')
     return df.sort_values("timestamp").reset_index(drop=True)
 
 
